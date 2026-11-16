@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>codexxx</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<style>
+:root{--bg:#000;--fg:#e6e6e6;--dim:#8a8f98;--grn:#5af78e;--blu:#57c7ff;--red:#ff5c57;--key:#1c1f24;--keyfg:#e6e6e6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#fafafa;--fg:#1d1f21;--dim:#6b7078;--grn:#0a7d33;--blu:#0b5cad;--red:#c62828;--key:#e4e6ea;--keyfg:#1d1f21}}
+:root[data-theme="dark"]{--bg:#000;--fg:#e6e6e6}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 "JetBrains Mono","Fira Code",Menlo,Consolas,monospace;display:flex;flex-direction:column}
+#hdr{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--key)}#av{width:34px;height:34px;border-radius:50%;object-fit:cover;background:var(--grn);color:#000;display:grid;place-items:center;font-weight:700}#term{flex:1;overflow-y:auto;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
+.row{display:flex}.ps{white-space:pre;flex:none}
+#in{flex:1;background:none;border:0;outline:0;color:var(--fg);font:inherit;padding:0;min-width:0;caret-color:var(--grn)}
+.g{color:var(--grn)}.b{color:var(--blu)}.r{color:var(--red)}.d{color:var(--dim)}
+#keys{display:flex;gap:4px;padding:6px;overflow-x:auto;background:var(--bg);border-top:1px solid var(--key)}
+#keys button{flex:1 0 auto;min-width:44px;height:38px;border:0;border-radius:6px;background:var(--key);color:var(--keyfg);font:inherit;font-size:13px;cursor:pointer}
+#keys button:focus-visible{outline:2px solid var(--blu)}
+#keys button.on{background:var(--grn);color:#000}
+</style>
+</head>
+<body>
+<div id="hdr"><img id="av" src="assets/photo.jpg" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{id:'av',textContent:'C'}))"><b>codexxx</b></div>
+<div id="term" onclick="IN.focus()"></div>
+<div id="keys"></div>
+<script>
+const T=document.getElementById('term');
+const HOME='/data/data/com.termux/files/home';
+let fs,cwd,env,hist=[],hi=0,ctrl=false,pkgs=new Set(['bash','coreutils','nano']);
+const mk=()=>({d:1,c:{}});
+function init(){
+  let s=null;try{s=JSON.parse(localStorage.getItem('tw'))}catch(e){}
+  if(s){fs=s.fs;hist=s.h||[];pkgs=new Set(s.p||[...pkgs])}
+  else{fs=mk();HOME.split('/').filter(Boolean).reduce((n,p)=>n.c[p]=mk(),fs);
+    const h=get(HOME);h.c['README.txt']={t:'Welcome to Termux Web.\nType help to see commands.\n'};h.c.storage=mk()}
+  cwd=HOME;env={HOME,USER:'u0_a123',PWD:cwd,SHELL:'bash',PREFIX:'/data/data/com.termux/files/usr'};
+}
+function save(){try{localStorage.setItem('tw',JSON.stringify({fs,h:hist.slice(-200),p:[...pkgs]}))}catch(e){}}
+function norm(p){const base=p.startsWith('/')?[]:cwd.split('/').filter(Boolean);
+  for(const s of p.replace(/^~/,HOME).split('/')){if(!s||s==='.')continue;if(s==='..')base.pop();else base.push(s)}return '/'+base.join('/')}
+function get(p){let n=fs;for(const s of norm(p).split('/').filter(Boolean)){if(!n.d||!n.c[s])return null;n=n.c[s]}return n}
+function parent(p){const a=norm(p).split('/').filter(Boolean);const name=a.pop();return[get('/'+a.join('/')),name]}
+const sh=p=>p===HOME?'~':p.startsWith(HOME+'/')?'~'+p.slice(HOME.length):p;
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function print(s,cls){const e=document.createElement('div');e.innerHTML=cls?`<span class="${cls}">${esc(s)}</span>`:esc(s);T.insertBefore(e,PR);T.scrollTop=T.scrollHeight}
+function tok(line){const o=[];let c='',q=null,has=false;
+  for(let i=0;i<line.length;i++){const ch=line[i];
+    if(q){if(ch===q)q=null;else c+=ch}
+    else if(ch==='"'||ch==="'"){q=ch;has=true}
+    else if(/\s/.test(ch)){if(c||has){o.push(c);c='';has=false}}
+    else c+=ch}
+  if(c||has)o.push(c);
+  return o.map(t=>t.replace(/\$(\w+)/g,(m,k)=>env[k]??''))}
+function flags(a){const f={},r=[];for(const x of a){if(/^-\w+$/.test(x))for(const c of x.slice(1))f[c]=1;else r.push(x)}return[f,r]}
+function lines(s){return s.split('\n').filter((l,i,a)=>i<a.length-1||l!=='')}
+function walk(n,p,cb){cb(p,n);if(n.d)for(const k of Object.keys(n.c).sort())walk(n.c[k],p+(p.endsWith('/')?'':'/')+k,cb)}
+const C={
+help(){return 'Files:   ls cd pwd cat mkdir touch rm rmdir cp mv tree find stat\nText:    echo head tail wc grep sort uniq tac rev write\nSystem:  clear date uname whoami env export history uptime neofetch which\nPackages: pkg install|remove|list|search <name>\nOther:   calc <expr>  theme dark|light  reset\nFeatures: pipes (|), redirects (> >>), $VARS, Tab complete, Up/Down history, Ctrl+C / Ctrl+L'},
+pwd(){return cwd},
+cd(a){const t=a[0]||HOME;const n=get(t);if(!n)return'cd: '+t+': No such file or directory';if(!n.d)return'cd: '+t+': Not a directory';cwd=norm(t);env.PWD=cwd;return''},
+ls(a){const[f,r]=flags(a);let out=[];for(const p of r.length?r:['.']){const n=get(p);if(!n){out.push(`ls: cannot access '${p}': No such file or directory`);continue}
+  if(!n.d){out.push(p);continue}
+  let k=Object.keys(n.c).sort();if(!f.a)k=k.filter(x=>!x.startsWith('.'));
+  if(f.l)out.push(...k.map(x=>{const c=n.c[x];return`${c.d?'drwx------':'-rw-------'} u0_a123 u0_a123 ${String(c.d?4096:(c.t||'').length).padStart(5)} ${x}${c.d?'/':''}`}));
+  else out.push(k.map(x=>n.c[x].d?x+'/':x).join('  '))}return out.join('\n')},
+cat(a,in_){if(!a.length)return in_;return a.map(p=>{const n=get(p);return!n?`cat: ${p}: No such file or directory`:n.d?`cat: ${p}: Is a directory`:n.t.replace(/\n$/,'')}).join('\n')},
+echo(a){const[f,r]=flags(a.filter(x=>x!=='-n'));return(a[0]==='-n'?a.slice(1):a).join(' ')},
+mkdir(a){const[f,r]=flags(a);return r.map(p=>{if(f.p){let n=fs;for(const s of norm(p).split('/').filter(Boolean)){if(!n.c[s])n.c[s]=mk();n=n.c[s]}return''}
+  const[pa,nm]=parent(p);if(!pa||!pa.d)return`mkdir: cannot create directory '${p}': No such file or directory`;if(pa.c[nm])return`mkdir: cannot create directory '${p}': File exists`;pa.c[nm]=mk();return''}).filter(Boolean).join('\n')},
+touch(a){return a.map(p=>{const[pa,nm]=parent(p);if(!pa)return`touch: cannot touch '${p}': No such file or directory`;if(!pa.c[nm])pa.c[nm]={t:''};return''}).filter(Boolean).join('\n')},
+rm(a){const[f,r]=flags(a);return r.map(p=>{const n=get(p);if(!n)return f.f?'':`rm: cannot remove '${p}': No such file or directory`;if(n.d&&!f.r)return`rm: cannot remove '${p}': Is a directory`;const[pa,nm]=parent(p);delete pa.c[nm];return''}).filter(Boolean).join('\n')},
+rmdir(a){return a.map(p=>{const n=get(p);if(!n||!n.d)return`rmdir: failed to remove '${p}': No such directory`;if(Object.keys(n.c).length)return`rmdir: failed to remove '${p}': Directory not empty`;const[pa,nm]=parent(p);delete pa.c[nm];return''}).filter(Boolean).join('\n')},
+cp(a){const[f,r]=flags(a);if(r.length<2)return'cp: missing destination';const n=get(r[0]);if(!n)return`cp: cannot stat '${r[0]}': No such file or directory`;if(n.d&&!f.r)return`cp: -r not specified; omitting directory '${r[0]}'`;
+  let d=get(r[1]);let[pa,nm]=d&&d.d?[d,r[0].split('/').pop()]:parent(r[1]);if(!pa)return'cp: invalid destination';pa.c[nm]=JSON.parse(JSON.stringify(n));return''},
+mv(a){if(a.length<2)return'mv: missing destination';const n=get(a[0]);if(!n)return`mv: cannot stat '${a[0]}': No such file or directory`;
+  let d=get(a[1]);let[pa,nm]=d&&d.d?[d,a[0].split('/').pop()]:parent(a[1]);if(!pa)return'mv: invalid destination';const[sp,sn]=parent(a[0]);pa.c[nm]=n;if(!(sp===pa&&sn===nm))delete sp.c[sn];return''},
+head(a,i){const[f,r]=flags(a.filter(x=>!/^\d+$/.test(x)));const n=+(a.find(x=>/^\d+$/.test(x))||10);return lines(r.length?C.cat(r):i).slice(0,n).join('\n')},
+tail(a,i){const n=+(a.find(x=>/^\d+$/.test(x))||10);const r=a.filter(x=>!/^-?\d+$/.test(x)&&!/^-/.test(x));return lines(r.length?C.cat(r):i).slice(-n).join('\n')},
+wc(a,i){const[f,r]=flags(a);const s=r.length?C.cat(r):i;const l=lines(s).length,w=s.split(/\s+/).filter(Boolean).length,c=s.length;return f.l?''+l:f.w?''+w:f.c?''+c:`${l} ${w} ${c}`},
+grep(a,i){const[f,r]=flags(a);if(!r.length)return'grep: missing pattern';let re;try{re=new RegExp(r[0],f.i?'i':'')}catch(e){return'grep: bad pattern'}
+  const s=r.length>1?C.cat(r.slice(1)):i;return lines(s).filter(l=>re.test(l)!==!!f.v).join('\n')},
+sort(a,i){const[f,r]=flags(a);let l=lines(r.length?C.cat(r):i).sort();if(f.r)l.reverse();return l.join('\n')},
+uniq(a,i){return lines(i).filter((l,k,x)=>l!==x[k-1]).join('\n')},
+tac(a,i){return lines(a.length?C.cat(a):i).reverse().join('\n')},
+rev(a,i){return lines(a.length?C.cat(a):i).map(l=>[...l].reverse().join('')).join('\n')},
+write(a){return a.length?'':'usage: write <file> <text>  (use echo text > file)'},
+tree(a){const p=a[0]||'.';const n=get(p);if(!n||!n.d)return'tree: '+p+': No such directory';const o=[p];
+  (function r(n,pre){const k=Object.keys(n.c).sort();k.forEach((x,i)=>{const L=i===k.length-1;o.push(pre+(L?'└── ':'├── ')+x);if(n.c[x].d)r(n.c[x],pre+(L?'    ':'│   '))})})(n,'');return o.join('\n')},
+find(a){const p=a[0]&&!a[0].startsWith('-')?a[0]:'.';const ni=a.indexOf('-name');const pat=ni>=0?new RegExp('^'+a[ni+1].replace(/[.+^${}()|[\]\\]/g,'\\$&').replace(/\*/g,'.*').replace(/\?/g,'.')+'$'):null;
+  const n=get(p);if(!n)return`find: '${p}': No such file or directory`;const o=[];walk(n,p==='.'?'.':p,(q,x)=>{if(!pat||pat.test(q.split('/').pop()))o.push(q)});return o.join('\n')},
+stat(a){const n=get(a[0]||'');if(!n)return`stat: cannot stat '${a[0]}'`;return`  File: ${a[0]}\n  Size: ${n.d?4096:n.t.length}\n  Type: ${n.d?'directory':'regular file'}`},
+clear(){T.querySelectorAll('div:not(#pr)').forEach(e=>e.remove());return''},
+date(){return new Date().toString()},
+uname(a){return a.includes('-a')?'Linux localhost 5.15.0 #1 SMP PREEMPT aarch64 Android':'Linux'},
+whoami(){return env.USER},
+uptime(){return' up '+Math.floor(performance.now()/60000)+' min, 1 user'},
+env(){return Object.entries(env).map(([k,v])=>k+'='+v).join('\n')},
+export(a){a.forEach(x=>{const[k,...v]=x.split('=');if(v.length)env[k]=v.join('=')});return''},
+history(){return hist.map((h,i)=>String(i+1).padStart(4)+'  '+h).join('\n')},
+which(a){return a.map(x=>C[x]?env.PREFIX+'/bin/'+x:'').filter(Boolean).join('\n')},
+calc(a){const e=a.join(' ');if(!/^[\d\s+\-*/%().^]+$/.test(e))return'calc: only numbers and + - * / % ^ ( ) allowed';try{return String(Function('"use strict";return ('+e.replace(/\^/g,'**')+')')())}catch(x){return'calc: syntax error'}},
+theme(a){if(!['dark','light'].includes(a[0]))return'usage: theme dark|light';document.documentElement.dataset.theme=a[0];if(a[0]==='light')document.documentElement.style.cssText='';return''},
+neofetch(){return`codexxx@device\n-----------------\nOS: codexxx terminal\nShell: bash\nPackages: ${pkgs.size}\nHome: ${sh(HOME)}`},
+reset(){localStorage.removeItem('tw');location.reload();return''},
+pkg(a){const[s,...n]=a;const known=['python','git','nodejs','vim','curl','wget','openssh','clang','htop','neofetch','tree','ruby','golang','rust'];
+  if(s==='list'||s==='list-installed')return[...pkgs].sort().join('\n');
+  if(s==='search')return known.filter(k=>k.includes(n[0]||'')).join('\n')||'no matches';
+  if(s==='install'||s==='i'){if(!n.length)return'pkg: no package given';return n.map(p=>known.includes(p)?(pkgs.add(p),`Installing ${p}... done (simulated)`):`E: Unable to locate package ${p}`).join('\n')}
+  if(s==='remove'||s==='uninstall')return n.map(p=>pkgs.delete(p)?`Removed ${p}`:`${p} is not installed`).join('\n');
+  if(s==='update'||s==='upgrade')return'All packages are up to date.';return'usage: pkg install|remove|list|search|update'}
+};
+C.apt=C.pkg;C.dir=C.ls;C.ll=a=>C.ls(['-l',...a]);C.exit=()=>'Session kept. Close the tab to leave.';
+function run(line){
+  let out=null;const stages=line.split('|');
+  for(const st of stages){
+    let t=tok(st.trim());if(!t.length)continue;
+    let file=null,app=false;const gi=t.findIndex(x=>x==='>'||x==='>>');
+    if(gi>=0){app=t[gi]==='>>';file=t[gi+1];t=t.slice(0,gi)}
+    else{const m=t.findIndex(x=>/^>>?./.test(x));if(m>=0){app=t[m].startsWith('>>');file=t[m].replace(/^>>?/,'');t.splice(m,1)}}
+    const c=t[0];let res;
+    if(!C[c]){res=`bash: ${c}: command not found`}
+    else try{res=C[c](t.slice(1),out??'')}catch(e){res=c+': error'}
+    if(file){const[pa,nm]=parent(file);if(!pa||!pa.d)res=`bash: ${file}: No such file or directory`;else{const ex=pa.c[nm];if(ex&&ex.d)res=`bash: ${file}: Is a directory`;else{pa.c[nm]={t:(app&&ex?ex.t:'')+res+'\n'};res=''}}}
+    out=res}
+  return out||''}
+// UI
+const PR=document.createElement('div');PR.id='pr';PR.className='row';
+PR.innerHTML='<span class="ps" id="ps"></span><input id="in" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal input">';
+T.appendChild(PR);const IN=document.getElementById('in'),PS=document.getElementById('ps');
+function prompt(){PS.innerHTML=`<span class="g">${esc(sh(cwd))}</span> <span class="b">$</span> `}
+function submit(){
+  const line=IN.value;print((PS.textContent)+line,'');IN.value='';
+  if(line.trim()){hist.push(line);const o=run(line);if(o)print(o,/command not found|No such|cannot|error|missing/.test(o)&&!o.includes('\n')?'r':'');save()}
+  hi=hist.length;prompt()}
+function complete(){
+  const v=IN.value,m=v.match(/(\S*)$/)[1],first=!v.trim().includes(' ');
+  let c=[];if(first)c=Object.keys(C).filter(k=>k.startsWith(m));
+  else{const i=m.lastIndexOf('/'),dir=i>=0?m.slice(0,i+1):'',n=get(dir||'.'),base=m.slice(i+1);
+    if(n&&n.d)c=Object.keys(n.c).filter(k=>k.startsWith(base)).map(k=>dir+k+(n.c[k].d?'/':''))}
+  if(c.length===1)IN.value=v.slice(0,v.length-m.length)+c[0]+(first?' ':'');
+  else if(c.length>1){let p=c[0];for(const x of c)while(!x.startsWith(p))p=p.slice(0,-1);IN.value=v.slice(0,v.length-m.length)+p;print(c.join('  '),'d')}}
+IN.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){submit()}
+  else if(e.key==='ArrowUp'){e.preventDefault();hi=Math.max(0,hi-1);IN.value=hist[hi]||''}
+  else if(e.key==='ArrowDown'){e.preventDefault();hi=Math.min(hist.length,hi+1);IN.value=hist[hi]||''}
+  else if(e.key==='Tab'){e.preventDefault();complete()}
+  else if((e.ctrlKey||ctrl)&&e.key.toLowerCase()==='c'){e.preventDefault();print(PS.textContent+IN.value+'^C','');IN.value='';ctrlOff()}
+  else if((e.ctrlKey||ctrl)&&e.key.toLowerCase()==='l'){e.preventDefault();C.clear();ctrlOff()}
+  else if(ctrl)ctrlOff()});
+function ctrlOff(){ctrl=false;document.getElementById('kc').classList.remove('on')}
+const K=document.getElementById('keys');
+[['ESC',()=>IN.value=''],['CTRL',null,'kc'],['TAB',complete],['↑',()=>{hi=Math.max(0,hi-1);IN.value=hist[hi]||''}],['↓',()=>{hi=Math.min(hist.length,hi+1);IN.value=hist[hi]||''}],['←',()=>IN.setSelectionRange(IN.selectionStart-1,IN.selectionStart-1)],['→',()=>IN.setSelectionRange(IN.selectionStart+1,IN.selectionStart+1)],['-'],['/'],['|'],['~'],['>']].forEach(([l,fn,id])=>{
+  const b=document.createElement('button');b.textContent=l;if(id)b.id=id;b.type='button';
+  b.onmousedown=e=>e.preventDefault();
+  b.onclick=()=>{if(l==='CTRL'){ctrl=!ctrl;b.classList.toggle('on',ctrl)}else if(fn)fn();else{const s=IN.selectionStart;IN.value=IN.value.slice(0,s)+l+IN.value.slice(s);IN.setSelectionRange(s+1,s+1)}IN.focus()};K.appendChild(b)});
+init();hi=hist.length;prompt();
+print('Welcome to codexxx!\nType "help" for commands. Files persist in this browser.\n','d');IN.focus();
+</script>
+</body>
+</html>
